@@ -29,7 +29,7 @@ type Config struct {
 
 // Storing messages
 type MessageStore struct {
-	messages []Message `json:messages`
+	Messages []Message `json:messages`
 }
 
 // Message represents a payload for sending/receiving
