@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,8 +18,8 @@ import (
 
 // Starting some guzzlers:
 // GUZZLER_NAME=guz_1 GUZZLER_BIND="localhost:8080" GUZZLER_PEERS="http://localhost:8081,http://localhost:8082" ./guzzler &
-// GUZZLER_NAME=guz_1 GUZZLER_BIND="localhost:8081" GUZZLER_PEERS="http://localhost:8080,http://localhost:8082" ./guzzler &
-// GUZZLER_NAME=guz_1 GUZZLER_BIND="localhost:8082" GUZZLER_PEERS="http://localhost:8080,http://localhost:8081" ./guzzler &
+// GUZZLER_NAME=guz_2 GUZZLER_BIND="localhost:8081" GUZZLER_PEERS="http://localhost:8080,http://localhost:8082" ./guzzler &
+// GUZZLER_NAME=guz_3 GUZZLER_BIND="localhost:8082" GUZZLER_PEERS="http://localhost:8080,http://localhost:8081" ./guzzler &
 
 // Config manages the service configuration
 type Config struct {
@@ -29,7 +30,7 @@ type Config struct {
 
 // Storing messages
 type MessageStore struct {
-	Messages []Message `json:messages`
+	Messages []Message `json:"messages"`
 }
 
 // Message represents a payload for sending/receiving
@@ -37,7 +38,7 @@ type Message struct {
 	ID      uuid.UUID `json:"id"`
 	Created time.Time `json:"created"`
 	Origin  string    `json:"origin"`
-	Body    []byte    `json:"body"`
+	Body    string    `json:"body"`
 }
 
 // APIVersion represents the REST API Version used in the URL path
@@ -56,14 +57,14 @@ func store(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	msgsStore.messages = append(msgsStore.messages, msg)
-	log.Printf("Collected %d messages", len(msgsStore.messages))
+	msgsStore.Messages = append(msgsStore.Messages, msg)
+	log.Printf("Collected %d messages", len(msgsStore.Messages))
 	w.WriteHeader(http.StatusCreated)
 }
 
 // Return collected messages from other clients GET v1/read
 func received(w http.ResponseWriter, r *http.Request) {
-	js, err := json.Marshal(&msgsStore.messages)
+	js, err := json.Marshal(&msgsStore.Messages)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -71,8 +72,15 @@ func received(w http.ResponseWriter, r *http.Request) {
 	w.Write(js)
 }
 
-func main() {
+func NewMessage(receiver string) *Message {
 
+	qID := rand.Intn(len(Quotes))
+	mb := Quotes[qID]
+	m := Message{uuid.New(), time.Now(), receiver, mb}
+	return &m
+}
+
+func main() {
 	ticker := time.NewTicker(time.Second)
 
 	sigs := make(chan os.Signal, 1)
@@ -102,7 +110,7 @@ func main() {
 
 				for _, p := range c.Peers {
 					// Prepare Message
-					m := Message{uuid.New(), time.Now(), c.Name, []byte("Blubb Body")}
+					m := NewMessage(p)
 
 					// Build URL
 					peerURL, err := url.Parse(p + APIVersion + "/store")
