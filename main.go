@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"log"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -12,73 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/kelseyhightower/envconfig"
 )
 
-// Starting some guzzlers:
-// GUZZLER_NAME=guz_1 GUZZLER_BIND="localhost:8080" GUZZLER_PEERS="http://localhost:8081,http://localhost:8082" ./guzzler &
-// GUZZLER_NAME=guz_2 GUZZLER_BIND="localhost:8081" GUZZLER_PEERS="http://localhost:8080,http://localhost:8082" ./guzzler &
-// GUZZLER_NAME=guz_3 GUZZLER_BIND="localhost:8082" GUZZLER_PEERS="http://localhost:8080,http://localhost:8081" ./guzzler &
-
-// Config manages the service configuration
-type Config struct {
-	Name  string   `envconfig:"GUZZLER_NAME" required:"true"`
-	Bind  string   `envconfig:"GUZZLER_BIND" default:"127.0.0.1:8080" required:"false"`
-	Peers []string `envconfig:"GUZZLER_PEERS" required:"true" split_words:"true"` /* ","-separated list of peers */
-}
-
-// Storing messages
-type MessageStore struct {
-	Messages []Message `json:"messages"`
-}
-
-// Message represents a payload for sending/receiving
-type Message struct {
-	ID      uuid.UUID `json:"id"`
-	Created time.Time `json:"created"`
-	Origin  string    `json:"origin"`
-	Body    string    `json:"body"`
-}
-
-// APIVersion represents the REST API Version used in the URL path
-const APIVersion = "/v1"
-
+// APIVersion1 represents the REST API Version used in the URL path
+const APIVersion1 = "/v1"
 var c Config
 var msgsStore MessageStore
-
-// Store an incomming message
-func store(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received: %v", r)
-
-	decoder := json.NewDecoder(r.Body)
-	var msg Message
-	err := decoder.Decode(&msg)
-	if err != nil {
-		panic(err)
-	}
-	msgsStore.Messages = append(msgsStore.Messages, msg)
-	log.Printf("Collected %d messages", len(msgsStore.Messages))
-	w.WriteHeader(http.StatusCreated)
-}
-
-// Return collected messages from other clients GET v1/read
-func received(w http.ResponseWriter, r *http.Request) {
-	js, err := json.Marshal(&msgsStore.Messages)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
-}
-
-func NewMessage(receiver string) *Message {
-
-	qID := rand.Intn(len(Quotes))
-	mb := Quotes[qID]
-	m := Message{uuid.New(), time.Now(), receiver, mb}
-	return &m
-}
 
 func main() {
 	ticker := time.NewTicker(time.Second)
@@ -113,7 +52,7 @@ func main() {
 					m := NewMessage(p)
 
 					// Build URL
-					peerURL, err := url.Parse(p + APIVersion + "/store")
+					peerURL, err := url.Parse(p + APIVersion1 + "/store/write")
 					if err != nil {
 						log.Printf("Could not parse peer URL: %s", err)
 					}
@@ -144,8 +83,8 @@ func main() {
 	if err != nil {
 		log.Printf("Error parsing configuration from environment: %s", err)
 	}
-	log.Printf("Configuration received from environment: %+v", c)
-	http.HandleFunc(APIVersion+"/read", received)
-	http.HandleFunc(APIVersion+"/store", store)
+	log.Printf("Configuration readFromStore from environment: %+v", c)
+	http.HandleFunc(APIVersion1+"/store/read", readFromStore)
+	http.HandleFunc(APIVersion1+"/store/write", writeToStore)
 	http.ListenAndServe(c.Bind, nil)
 }
